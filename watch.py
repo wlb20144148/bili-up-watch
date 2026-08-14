@@ -1,6 +1,10 @@
+import hashlib
 import json
 import os
+import re
+import time
 from pathlib import Path
+from urllib.parse import urlencode
 
 import requests
 
@@ -17,12 +21,21 @@ UP_LIST = {
 
 STATE_FILE = Path("seen.json")
 
+MIXIN_KEY_ENC_TAB = [
+    46, 47, 18, 2, 53, 8, 23, 32, 15, 50, 10, 31, 58, 3, 45, 35,
+    27, 43, 5, 49, 33, 9, 42, 19, 29, 28, 14, 39, 12, 38, 41, 13,
+    37, 48, 7, 16, 24, 55, 40, 61, 26, 17, 0, 1, 60, 51, 30, 4,
+    22, 25, 54, 21, 56, 59, 6, 63, 57, 62, 11, 36, 20, 34, 44, 52,
+]
+
+HEADERS = {
+    "User-Agent": "Mozilla/5.0",
+    "Referer": "https://www.bilibili.com/",
+}
+
 
 def load_seen():
-    if not STATE_FILE.exists():
-        return {}
-
-    if STATE_FILE.stat().st_size == 0:
+    if not STATE_FILE.exists() or STATE_FILE.stat().st_size == 0:
         return {}
 
     with STATE_FILE.open("r", encoding="utf-8") as f:
@@ -48,19 +61,51 @@ def push(title, content):
     resp.raise_for_status()
 
 
-def fetch_up_videos(uid):
-    url = "https://app.biliapi.com/x/v2/space/archive/cursor"
-    params = {
-        "vmid": uid,
-        "order": "pubdate",
-        "ps": 20,
-    }
-    headers = {
-        "User-Agent": "Mozilla/5.0",
-        "Referer": f"https://space.bilibili.com/{uid}",
-    }
+def get_mixin_key():
+    resp = requests.get(
+        "https://api.bilibili.com/x/web-interface/nav",
+        headers=HEADERS,
+        timeout=20,
+    )
+    resp.raise_for_status()
+    data = resp.json()
 
-    resp = requests.get(url, params=params, headers=headers, timeout=20)
+    wbi_img = data["data"]["wbi_img"]
+    img_key = wbi_img["img_url"].rsplit("/", 1)[1].split(".")[0]
+    sub_key = wbi_img["sub_url"].rsplit("/", 1)[1].split(".")[0]
+    raw = img_key + sub_key
+
+    return "".join(raw[i] for i in MIXIN_KEY_ENC_TAB)[:32]
+
+
+def sign_wbi(params):
+    mixin_key = get_mixin_key()
+    params = dict(params)
+    params["wts"] = int(time.time())
+
+    clean_params = {}
+    for key in sorted(params):
+        value = str(params[key])
+        value = re.sub(r"[!'()*]", "", value)
+        clean_params[key] = value
+
+    query = urlencode(clean_params)
+    clean_params["w_rid"] = hashlib.md5((query + mixin_key).encode()).hexdigest()
+    return clean_params
+
+
+def fetch_up_videos(uid):
+    url = "https://api.bilibili.com/x/space/wbi/arc/search"
+    params = sign_wbi({
+        "mid": uid,
+        "pn": 1,
+        "ps": 20,
+        "order": "pubdate",
+        "platform": "web",
+        "web_location": 1550101,
+    })
+
+    resp = requests.get(url, params=params, headers=HEADERS, timeout=20)
     resp.raise_for_status()
 
     data = resp.json()
@@ -68,13 +113,13 @@ def fetch_up_videos(uid):
         print(f"Bili API failed for uid={uid}: {data}")
         return []
 
-    items = data.get("data", {}).get("item", [])
+    items = data.get("data", {}).get("list", {}).get("vlist", [])
     print(f"Fetched {len(items)} entries for uid={uid}")
     return items
 
 
 def video_id(item):
-    return item.get("bvid") or str(item.get("param"))
+    return item.get("bvid") or str(item.get("aid"))
 
 
 def video_link(item):
@@ -82,20 +127,15 @@ def video_link(item):
     if bvid:
         return f"https://www.bilibili.com/video/{bvid}"
 
-    aid = item.get("param")
-    return f"https://www.bilibili.com/video/av{aid}"
+    return f"https://www.bilibili.com/video/av{item.get('aid')}"
 
 
 def main():
     seen = load_seen()
-    first_run = not STATE_FILE.exists()
-    changed = False
+    first_run = not bool(seen)
 
     for up_name, uid in UP_LIST.items():
         old_ids = set(seen.get(uid, []))
-        entries = fetch_up_videos(uid)
-
-        if not entries:
             continue
 
         new_entries = []
@@ -113,20 +153,15 @@ def main():
         seen[uid] = list(current_ids)[-100:]
 
         if first_run:
-            changed = True
             continue
 
         for item in reversed(new_entries):
             title = item.get("title", "B站新视频")
             link = video_link(item)
-
             push(
                 f"B站更新：{up_name}",
                 f'<p><b>{title}</b></p><p><a href="{link}">{link}</a></p>',
             )
-
-        if new_entries:
-            changed = True
 
     if seen:
         save_seen(seen)
