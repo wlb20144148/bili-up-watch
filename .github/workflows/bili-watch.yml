@@ -1,0 +1,26 @@
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+  contents: write
+
+jobs:
+  watch:
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          python-version: "3.11"
+
+      - run: pip install -r requirements.txt
+
+      - run: python watch.py
+        env:
+          WXPUSHER_SPT: ${{ secrets.WXPUSHER_SPT }}
+
+      - name: Commit state
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git add seen.json
+          git diff --cached --quiet || git commit -m "Update seen videos"
+          git push
