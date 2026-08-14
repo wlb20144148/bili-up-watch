@@ -1,6 +1,7 @@
 import hashlib
 import json
 import os
+import random
 import re
 import time
 from pathlib import Path
@@ -29,6 +30,8 @@ MIXIN_KEY_ENC_TAB = [
 ]
 
 HEADERS = {
+    "Accept": "application/json, text/plain, */*",
+    "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
     "User-Agent": (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
         "AppleWebKit/537.36 Chrome/124.0 Safari/537.36"
@@ -101,32 +104,52 @@ def sign_wbi(params):
     return clean_params
 
 
+def browser_fingerprint_params():
+    # These browser fingerprint fields are commonly present on Bilibili web WBI calls.
+    return {
+        "dm_img_list": "[]",
+        "dm_img_str": "V2ViR0wgMS4wIChPcGVuR0wgRVMgMi4wIENocm9taXVtKQ",
+        "dm_cover_img_str": (
+            "QU5HTEUgKEludGVsLCBJbnRlbChSKSBVSEQgR3JhcGhpY3MgRGlyZWN0M0QxMSB2c181XzB"
+            "fcHM1XzApLCBvciBzaW1pbGFy"
+        ),
+        "dm_img_inter": '{"ds":[],"wh":[0,0,0],"of":[0,0,0]}',
+    }
+
+
 def fetch_up_videos(uid):
     url = "https://api.bilibili.com/x/space/wbi/arc/search"
-    params = sign_wbi({
+    base_params = {
         "mid": uid,
         "pn": 1,
         "ps": 20,
         "order": "pubdate",
         "platform": "web",
         "web_location": 1550101,
-    })
+    }
+    base_params.update(browser_fingerprint_params())
 
-    try:
-        resp = SESSION.get(url, params=params, timeout=20)
-        resp.raise_for_status()
-    except requests.RequestException as exc:
-        print(f"Bili API request failed for uid={uid}: {exc}")
-        return []
+    for attempt in range(1, 4):
+        params = sign_wbi(base_params)
 
-    data = resp.json()
-    if data.get("code") != 0:
-        print(f"Bili API failed for uid={uid}: {data}")
-        return []
+        try:
+            resp = SESSION.get(url, params=params, timeout=20)
+            resp.raise_for_status()
+        except requests.RequestException as exc:
+            print(f"Bili API request failed for uid={uid}, attempt={attempt}: {exc}")
+            time.sleep(8 + random.random() * 5)
+            continue
 
-    items = data.get("data", {}).get("list", {}).get("vlist", [])
-    print(f"Fetched {len(items)} entries for uid={uid}")
-    return items
+        data = resp.json()
+        if data.get("code") == 0:
+            items = data.get("data", {}).get("list", {}).get("vlist", [])
+            print(f"Fetched {len(items)} entries for uid={uid}")
+            return items
+
+        print(f"Bili API failed for uid={uid}, attempt={attempt}: {data}")
+        time.sleep(8 + random.random() * 5)
+
+    return []
 
 
 def video_id(item):
@@ -149,6 +172,7 @@ def main():
     for up_name, uid in UP_LIST.items():
         old_ids = set(seen.get(uid, []))
         entries = fetch_up_videos(uid)
+        time.sleep(6 + random.random() * 4)
 
         if not entries:
             continue
