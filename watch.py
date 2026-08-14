@@ -29,6 +29,9 @@ def load_seen():
     if not STATE_FILE.exists():
         return {}
 
+    if STATE_FILE.stat().st_size == 0:
+        return {}
+
     with STATE_FILE.open("r", encoding="utf-8") as f:
         return json.load(f)
 
@@ -105,8 +108,10 @@ def main():
         if new_entries:
             changed = True
 
-    if changed or first_run:
+    if seen:
         save_seen(seen)
+    else:
+        print("No entries fetched, seen.json not updated")
 
 
 if __name__ == "__main__":
