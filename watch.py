@@ -2,13 +2,11 @@ import json
 import os
 from pathlib import Path
 
-import feedparser
 import requests
 
 
 WXPUSHER_SPT = os.environ["WXPUSHER_SPT"]
 
-# 改成你要关注的 UP 主 UID
 UP_LIST = {
     "影视飓风": "946974",
     "IC一站式服务": "3461580865931962",
@@ -16,11 +14,6 @@ UP_LIST = {
     "泫九AI": "21384754",
     # "另一个UP": "123456",
 }
-
-RSSHUB_BASES = [
-    "https://rsshub.app",
-    "https://rsshub.rssforever.com",
-]
 
 STATE_FILE = Path("seen.json")
 
@@ -56,21 +49,41 @@ def push(title, content):
 
 
 def fetch_up_videos(uid):
-    route = f"/bilibili/user/video/{uid}"
+    url = "https://app.biliapi.com/x/v2/space/archive/cursor"
+    params = {
+        "vmid": uid,
+        "order": "pubdate",
+        "ps": 20,
+    }
+    headers = {
+        "User-Agent": "Mozilla/5.0",
+        "Referer": f"https://space.bilibili.com/{uid}",
+    }
 
-    for base in RSSHUB_BASES:
-        url = f"{base}{route}"
-        feed = feedparser.parse(url)
+    resp = requests.get(url, params=params, headers=headers, timeout=20)
+    resp.raise_for_status()
 
-        if feed.entries:
-            print(f"Fetched {len(feed.entries)} entries from {url}")
-            return feed.entries
+    data = resp.json()
+    if data.get("code") != 0:
+        print(f"Bili API failed for uid={uid}: {data}")
+        return []
 
-        error = getattr(feed, "bozo_exception", None)
-        print(f"RSSHub failed: {url}, error={error}")
+    items = data.get("data", {}).get("item", [])
+    print(f"Fetched {len(items)} entries for uid={uid}")
+    return items
 
-    print(f"All RSSHub instances failed for uid={uid}, skip this run")
-    return []
+
+def video_id(item):
+    return item.get("bvid") or str(item.get("param"))
+
+
+def video_link(item):
+    bvid = item.get("bvid")
+    if bvid:
+        return f"https://www.bilibili.com/video/{bvid}"
+
+    aid = item.get("param")
+    return f"https://www.bilibili.com/video/av{aid}"
 
 
 def main():
@@ -88,10 +101,13 @@ def main():
         new_entries = []
         current_ids = set(old_ids)
 
-        for entry in entries:
-            item_id = getattr(entry, "id", None) or entry.link
+        for item in entries:
+            item_id = video_id(item)
+            if not item_id:
+                continue
+
             if item_id not in old_ids:
-                new_entries.append(entry)
+                new_entries.append(item)
                 current_ids.add(item_id)
 
         seen[uid] = list(current_ids)[-100:]
@@ -100,10 +116,14 @@ def main():
             changed = True
             continue
 
-        for entry in reversed(new_entries):
-            title = f"B站更新：{up_name}"
-            content = f'<p><b>{entry.title}</b></p><p><a href="{entry.link}">{entry.link}</a></p>'
-            push(title, content)
+        for item in reversed(new_entries):
+            title = item.get("title", "B站新视频")
+            link = video_link(item)
+
+            push(
+                f"B站更新：{up_name}",
+                f'<p><b>{title}</b></p><p><a href="{link}">{link}</a></p>',
+            )
 
         if new_entries:
             changed = True
