@@ -10,13 +10,13 @@ import requests
 
 
 WXPUSHER_SPT = os.environ["WXPUSHER_SPT"]
+BILI_COOKIE = os.environ.get("BILI_COOKIE", "")
 
 UP_LIST = {
     "影视飓风": "946974",
     "IC一站式服务": "3461580865931962",
     "智视界AI时代": "499440615",
     "泫九AI": "21384754",
-    # "另一个UP": "123456",
 }
 
 STATE_FILE = Path("seen.json")
@@ -29,9 +29,16 @@ MIXIN_KEY_ENC_TAB = [
 ]
 
 HEADERS = {
-    "User-Agent": "Mozilla/5.0",
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 Chrome/124.0 Safari/537.36"
+    ),
     "Referer": "https://www.bilibili.com/",
 }
+SESSION = requests.Session()
+SESSION.headers.update(HEADERS)
+if BILI_COOKIE:
+    SESSION.headers.update({"Cookie": BILI_COOKIE})
 
 
 def load_seen():
@@ -62,9 +69,9 @@ def push(title, content):
 
 
 def get_mixin_key():
-    resp = requests.get(
+    SESSION.get("https://www.bilibili.com/", timeout=20)
+    resp = SESSION.get(
         "https://api.bilibili.com/x/web-interface/nav",
-        headers=HEADERS,
         timeout=20,
     )
     resp.raise_for_status()
@@ -105,8 +112,12 @@ def fetch_up_videos(uid):
         "web_location": 1550101,
     })
 
-    resp = requests.get(url, params=params, headers=HEADERS, timeout=20)
-    resp.raise_for_status()
+    try:
+        resp = SESSION.get(url, params=params, timeout=20)
+        resp.raise_for_status()
+    except requests.RequestException as exc:
+        print(f"Bili API request failed for uid={uid}: {exc}")
+        return []
 
     data = resp.json()
     if data.get("code") != 0:
@@ -133,9 +144,13 @@ def video_link(item):
 def main():
     seen = load_seen()
     first_run = not bool(seen)
+    changed = False
 
     for up_name, uid in UP_LIST.items():
         old_ids = set(seen.get(uid, []))
+        entries = fetch_up_videos(uid)
+
+        if not entries:
             continue
 
         new_entries = []
@@ -150,7 +165,8 @@ def main():
                 new_entries.append(item)
                 current_ids.add(item_id)
 
-        seen[uid] = list(current_ids)[-100:]
+        seen[uid] = sorted(current_ids)[-100:]
+        changed = True
 
         if first_run:
             continue
@@ -163,9 +179,9 @@ def main():
                 f'<p><b>{title}</b></p><p><a href="{link}">{link}</a></p>',
             )
 
-    if seen:
+    if changed and seen:
         save_seen(seen)
-    else:
+    elif not seen:
         print("No entries fetched, seen.json not updated")
 
 
