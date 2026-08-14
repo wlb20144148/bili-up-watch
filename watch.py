@@ -45,13 +45,21 @@ def push(title, content):
 
 
 def fetch_up_videos(uid):
-    url = f"https://rsshub.app/bilibili/user/video/{uid}"
-    feed = feedparser.parse(url)
+    route = f"/bilibili/user/video/{uid}"
 
-    if getattr(feed, "bozo", False):
-        raise RuntimeError(f"RSS parse failed: {url}")
+    for base in RSSHUB_BASES:
+        url = f"{base}{route}"
+        feed = feedparser.parse(url)
 
-    return feed.entries
+        if feed.entries:
+            print(f"Fetched {len(feed.entries)} entries from {url}")
+            return feed.entries
+
+        error = getattr(feed, "bozo_exception", None)
+        print(f"RSSHub failed: {url}, error={error}")
+
+    print(f"All RSSHub instances failed for uid={uid}, skip this run")
+    return []
 
 
 def main():
@@ -62,6 +70,9 @@ def main():
     for up_name, uid in UP_LIST.items():
         old_ids = set(seen.get(uid, []))
         entries = fetch_up_videos(uid)
+
+        if not entries:
+            continue
 
         new_entries = []
         current_ids = set(old_ids)
@@ -74,17 +85,13 @@ def main():
 
         seen[uid] = list(current_ids)[-100:]
 
-        # 首次运行只记录历史视频，不推送，避免刷屏
         if first_run:
             changed = True
             continue
 
         for entry in reversed(new_entries):
             title = f"B站更新：{up_name}"
-            content = f'''
-            <p><b>{entry.title}</b></p>
-            <p><a href="{entry.link}">{entry.link}</a></p>
-            '''
+            content = f'<p><b>{entry.title}</b></p><p><a href="{entry.link}">{entry.link}</a></p>'
             push(title, content)
 
         if new_entries:
