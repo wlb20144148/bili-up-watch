@@ -2,7 +2,7 @@ name: Bili UP Watch
 
 on:
   schedule:
-    - cron: "*/30 * * * *"
+    - cron: "0 */2 * * *"
   workflow_dispatch:
     inputs:
       test_push:
@@ -34,16 +34,3 @@ jobs:
         env:
           WXPUSHER_SPT: ${{ secrets.WXPUSHER_SPT }}
           BILI_COOKIE: ${{ secrets.BILI_COOKIE }}
-          TEST_PUSH: ${{ github.event.inputs.test_push }}
-
-      - name: Commit state
-        run: |
-          git config user.name "github-actions"
-          git config user.email "github-actions@github.com"
-          if [ -f seen.json ]; then
-            git add seen.json
-            git diff --cached --quiet || git commit -m "Update seen videos"
-            git push
-          else
-            echo "seen.json not found, skip commit"
-          fi
