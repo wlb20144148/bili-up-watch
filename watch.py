@@ -14,6 +14,11 @@ UP_LIST = {
     # "另一个UP": "123456",
 }
 
+RSSHUB_BASES = [
+    "https://rsshub.app",
+    "https://rsshub.rssforever.com",
+]
+
 STATE_FILE = Path("seen.json")
 
 
