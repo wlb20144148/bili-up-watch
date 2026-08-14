@@ -4,6 +4,15 @@ on:
   schedule:
     - cron: "*/30 * * * *"
   workflow_dispatch:
+    inputs:
+      test_push:
+        description: "Send a WxPusher test message only"
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
 
 permissions:
   contents: write
@@ -25,6 +34,7 @@ jobs:
         env:
           WXPUSHER_SPT: ${{ secrets.WXPUSHER_SPT }}
           BILI_COOKIE: ${{ secrets.BILI_COOKIE }}
+          TEST_PUSH: ${{ github.event.inputs.test_push }}
 
       - name: Commit state
         run: |

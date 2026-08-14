@@ -12,6 +12,7 @@ import requests
 
 WXPUSHER_SPT = os.environ["WXPUSHER_SPT"]
 BILI_COOKIE = os.environ.get("BILI_COOKIE", "")
+TEST_PUSH = os.environ.get("TEST_PUSH", "").lower() == "true"
 
 UP_LIST = {
     "影视飓风": "946974",
@@ -69,6 +70,11 @@ def push(title, content):
         timeout=20,
     )
     resp.raise_for_status()
+    result = resp.json()
+    print(f"WxPusher response: {result}")
+
+    if result.get("code") != 1000:
+        raise RuntimeError(f"WxPusher push failed: {result}")
 
 
 def get_mixin_key():
@@ -165,6 +171,10 @@ def video_link(item):
 
 
 def main():
+    if TEST_PUSH:
+        push("B站提醒测试", "如果你看到这条消息，说明 WxPusher 推送通道正常。")
+        return
+
     seen = load_seen()
     first_run = not bool(seen)
     changed = False
