@@ -1,50 +1,21 @@
+name: Bili UP Watch
 
-Skip to content
-
-    wlb20144148
-    bili-up-watch
-
-Repository navigation
-
-Code
-Issues
-Pull requests
-Agents
-Actions
-Projects
-Wiki
-Security and quality
-Insights
-
-    Settings
-
-.github/workflows/bili-watch.yml
-.github/workflows/bili-watch.yml #2
-
-All jobs
-
-Run details
-
-Workflow file for this run
-.github/workflows/bili-watch.yml at b561873
 on:
-
-Check failure on line 1 in .github/workflows/bili-watch.yml
-GitHub Actions / .github/workflows/bili-watch.yml
-
-Invalid workflow file
-
-(Line: 5, Col: 3): Unexpected value 'contents', (Line: 5, Col: 13): Unexpected value 'write', (Line: 9, Col: 5): Required property is missing: runs-on
-
   schedule:
     - cron: "*/30 * * * *"
   workflow_dispatch:
+
+permissions:
   contents: write
 
 jobs:
   watch:
+    runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
