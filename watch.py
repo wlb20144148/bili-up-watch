@@ -13,6 +13,7 @@ import requests
 WXPUSHER_SPT = os.environ["WXPUSHER_SPT"]
 BILI_COOKIE = os.environ.get("BILI_COOKIE", "")
 TEST_PUSH = os.environ.get("TEST_PUSH", "").lower() == "true"
+SYNC_ONLY = os.environ.get("SYNC_ONLY", "").lower() == "true"
 
 UP_LIST = {
     "影视飓风": "946974",
@@ -176,10 +177,10 @@ def main():
         return
 
     seen = load_seen()
-    first_run = not bool(seen)
     changed = False
 
     for up_name, uid in UP_LIST.items():
+        uid_initialized = uid in seen
         old_ids = set(seen.get(uid, []))
         entries = fetch_up_videos(uid)
         time.sleep(6 + random.random() * 4)
@@ -202,7 +203,8 @@ def main():
         seen[uid] = sorted(current_ids)[-100:]
         changed = True
 
-        if first_run:
+        if SYNC_ONLY or not uid_initialized:
+            print(f"Synced {len(new_entries)} entries for uid={uid} without notification")
             continue
 
         for item in reversed(new_entries):

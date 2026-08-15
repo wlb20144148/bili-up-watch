@@ -13,6 +13,14 @@ on:
         options:
           - "false"
           - "true"
+      sync_only:
+        description: "Update seen.json without sending notifications"
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
 
 permissions:
   contents: write
@@ -34,3 +42,17 @@ jobs:
         env:
           WXPUSHER_SPT: ${{ secrets.WXPUSHER_SPT }}
           BILI_COOKIE: ${{ secrets.BILI_COOKIE }}
+          TEST_PUSH: ${{ github.event.inputs.test_push }}
+          SYNC_ONLY: ${{ github.event.inputs.sync_only }}
+
+      - name: Commit state
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          if [ -f seen.json ]; then
+            git add seen.json
+            git diff --cached --quiet || git commit -m "Update seen videos"
+            git push
+          else
+            echo "seen.json not found, skip commit"
+          fi
